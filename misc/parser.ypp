@@ -1,0 +1,202 @@
+%code requires {
+  #include <stdio.h>
+  #include <iostream>
+  #include <string.h>
+  
+
+  
+
+  int yylex();
+  extern int yyerror(const char *s);
+  extern FILE* yyin;
+
+  extern int yyparse();
+  using namespace std;
+
+  #define YYERROR_VERBOSE 1
+
+}
+
+
+%{
+  #include "/home/ss/Desktop/SS Projekat/inc/assembler.hpp"
+  Assembler *ass;
+%}
+
+%union{
+  string* str;
+  int integer;
+}
+
+%token EOL SEMICOLON
+%token STAR PERCENT LEFT_BRACKET RIGHT_BRACKET DOLLAR PLUS COMMA GLOBAL EXTERN SECTION WORD SKIP END HALT INT IRET CALL RET JMP BEQ BNE BGT PUSH POP XCHG ADD SUB MUL DIV CMP NOT AND OR XOR TEST SHL SHR LD ST
+%token CSRRD CSRWR
+
+%token<str> SYMBOL
+%token<integer> DECIMAL_LITERAL
+%token<str> HEX_LITERAL
+%token <str> R0
+%token <str> R1
+%token <str> R2
+%token <str> R3
+%token <str> R4
+%token <str> R5
+%token <str> R6
+%token <str> R7
+%token <str> R8
+%token <str> R9
+%token <str> R10
+%token <str> R11
+%token <str> R12
+%token <str> R13
+%token <str> R14
+%token <str> R15
+%token <str> HANDLERREGISTER
+%token <str> CAUSEREGISTER
+%token <str> STATUSREGISTER
+
+%type<str> register
+%%
+
+prog : input;
+
+input: {}
+| input line {}
+;
+
+line: EOL { }
+| SYMBOL SEMICOLON EOL { ass->addSymbol($1); }
+| SYMBOL SEMICOLON directive EOL { ass->addSymbol($1); }
+| directive EOL
+
+| SYMBOL SEMICOLON AssemblyCommand EOL { ass->addSymbol($1); }
+| AssemblyCommand EOL
+;
+
+AssemblyCommand : HALT { ass->haltAssemblyInstruction(); }
+| INT { ass->intAssemblyInstruction(); }
+| IRET {}
+| CALL operandJump
+| RET
+| JMP operandJump {}
+| BEQ PERCENT register COMMA PERCENT register COMMA operandJump {}
+| BNE PERCENT register COMMA PERCENT register COMMA operandJump {}
+| BGT PERCENT register COMMA PERCENT register COMMA operandJump {}
+| PUSH PERCENT register
+| POP PERCENT register
+| XCHG PERCENT register COMMA PERCENT register { ass->xchgAssemblyInstruction($3, $6); }
+| ADD PERCENT register COMMA PERCENT register { ass->addAssemblyInstruction($3, $6); }
+| SUB PERCENT register COMMA PERCENT register { ass->subAssemblyInstruction($3, $6); }
+| MUL PERCENT register COMMA PERCENT register { ass->mulAssemblyInstruction($3, $6); }
+| DIV PERCENT register COMMA PERCENT register { ass->divAssemblyInstruction($3, $6); }
+| NOT PERCENT register
+| AND PERCENT register COMMA PERCENT register
+| OR PERCENT register COMMA PERCENT register
+| XOR PERCENT register COMMA PERCENT register
+| SHL PERCENT register COMMA PERCENT register
+| SHR PERCENT register COMMA PERCENT register
+| LD operand COMMA PERCENT register { ass->dataLdAssemblyInstruction($5); }
+| ST PERCENT register COMMA operand { ass->dataLdAssemblyInstruction($3); }
+| CSRRD ControlAndStatusRegister COMMA PERCENT register
+| CSRWR PERCENT register COMMA ControlAndStatusRegister
+;
+
+ControlAndStatusRegister : STATUSREGISTER { std::cout << "Status register: " << $1 << std::endl; }
+| CAUSEREGISTER { std::cout << "cause register: " << *($1) << std::endl; }
+| HANDLERREGISTER { std::cout << "handler register: " << $1 << std::endl; }
+;
+
+register:
+    R0  { $$ = $1; }
+    | R1  { $$ = $1; }
+    | R2  { $$ = $1; }
+    | R3  { $$ = $1; }
+    | R4  { $$ = $1; }
+    | R5  { $$ = $1; }
+    | R6  { $$ = $1; }
+    | R7  { $$ = $1; }
+    | R8  { $$ = $1; }
+    | R9  { $$ = $1; }
+    | R10 { $$ = $1; }
+    | R11 { $$ = $1; }
+    | R12 { $$ = $1; }
+    | R13 { $$ = $1; }
+    | R14 { $$ = $1; }
+    | R15 { $$ = $1; }
+    ;
+
+
+
+operandJump:  HEX_LITERAL { int decLiteral = ass->convertHexToInt($1); ass->jmpAssemblyInstructionLiteral(decLiteral); }
+  | DECIMAL_LITERAL { ass->jmpAssemblyInstructionLiteral($1); }
+  | SYMBOL { ass->jmpAssemblyInstructionSymbol($1); }
+
+operand: DOLLAR HEX_LITERAL { int decLiteral = ass->convertHexToInt($2); ass->storeData(decLiteral, nullptr); }
+| DOLLAR DECIMAL_LITERAL { ass->storeData($2, nullptr); }
+| DOLLAR SYMBOL { ass->storeData(0, $2); }
+| HEX_LITERAL { std::cout << "HEX_LITERAL: " << $1 << std::endl; }
+| DECIMAL_LITERAL { std::cout << "DECIMAL_LITERAL: " << $1 << std::endl; }
+| SYMBOL { std::cout << "SYMBOL: " << $1 << std::endl; }
+| PERCENT register
+| LEFT_BRACKET PERCENT register RIGHT_BRACKET
+| LEFT_BRACKET PERCENT register PLUS HEX_LITERAL RIGHT_BRACKET { std::cout << "HEX_LITERAL: " << $5 << std::endl; }
+| LEFT_BRACKET PERCENT register PLUS DECIMAL_LITERAL RIGHT_BRACKET { std::cout << "DECIMAL LITERAL: " << $5 << std::endl; }
+| LEFT_BRACKET PERCENT register PLUS SYMBOL RIGHT_BRACKET { std::cout << "SYMBOL: " << $5 << std::endl; }
+
+directive: GLOBAL SymbolListGlobal { }
+| EXTERN SymbolListExtern { }
+| SECTION SYMBOL { ass->sectionAssemblyDirective($2); }
+| WORD SymbolOrLiteralList {}
+| SKIP HEX_LITERAL { int bytesToSkip = ass->convertHexToInt($2); ass->skipAssemblyDirective(bytesToSkip); }
+| SKIP DECIMAL_LITERAL { ass->skipAssemblyDirective($2); }
+| END {ass->endAssemblyDirective(); }
+;
+
+SymbolOrLiteralList: SYMBOL { ass->wordAssemblyDirective(0, $1); }
+  | HEX_LITERAL { int hexLiteral = ass->convertHexToInt($1); ass->wordAssemblyDirective(hexLiteral, nullptr); }
+  | DECIMAL_LITERAL { ass->wordAssemblyDirective($1, nullptr); }
+  | SymbolOrLiteralList COMMA SYMBOL { ass->wordAssemblyDirective(0, $3); }
+  | SymbolOrLiteralList COMMA HEX_LITERAL { int hexLiteral = ass->convertHexToInt($3); ass->wordAssemblyDirective(hexLiteral, nullptr); }
+  | SymbolOrLiteralList COMMA DECIMAL_LITERAL { ass->wordAssemblyDirective($3, nullptr); }
+  ;
+
+SymbolListGlobal: SYMBOL { ass->globalAssemblyDirective($1); }
+| SymbolListGlobal COMMA SYMBOL { ass->globalAssemblyDirective($3); }
+;
+
+SymbolListExtern: SYMBOL { ass->externAssemblyDirective($1); }
+| SymbolListExtern COMMA SYMBOL { ass->externAssemblyDirective($3); }
+;
+
+
+
+%%
+
+int mainp(int argc, char* argv[], Assembler* as) {
+  ass = as;
+
+  FILE *myfile = fopen("test.s", "r");
+  //FILE *myfile = NULL;
+  
+  //myfile = fopen(argv[1], "r");
+  // Make sure it is valid:
+  if (!myfile) {
+    cout << "I can't open file!" << endl;
+    return -1;
+  }
+  // Set Flex to read from it instead of defaulting to STDIN:
+  yyin = myfile;
+  
+  do{
+    yyparse();
+  }while(!feof(yyin));
+
+  return 0;
+  
+}
+
+int yyerror(const char *s){
+  printf("ERROR: %s\n", s);
+
+  return 0;
+}

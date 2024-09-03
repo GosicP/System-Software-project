@@ -1,0 +1,80 @@
+%option noyywrap
+%{
+  #include <iostream>
+  #include <stdio.h>
+
+  #include "parser.tab.hpp"
+%}
+
+%%
+
+\* {printf("STAR \n"); return STAR; }
+"%" {printf("PERCENT \n"); return PERCENT; }
+"[" {printf("LEFT BRACKET \n"); return LEFT_BRACKET; }
+"]" {printf("RIGHT BRACKET \n"); return RIGHT_BRACKET; }
+"$" {printf("DOLLAR \n"); return DOLLAR; }
+"+" {printf("PLUS \n"); return PLUS; }
+, {printf("COMMA \n"); return COMMA; }
+":" {printf("SEMICOLON \n"); return SEMICOLON; }
+#\s*.+ { printf("NAISAO SAM NA KOMENTAR \n");}
+\.global {printf("GLOBAL\n"); return GLOBAL; }
+\.extern {printf("EXTERN\n"); return EXTERN; }
+\.section {printf("SECTION\n"); return SECTION; }
+\.word {printf("WORD\n"); return WORD; }
+\.skip {printf("SKIP\n"); return SKIP; }
+\.end {printf("END\n"); return END; }
+halt {printf("HALT \n"); return HALT; }
+int { printf("INT \n"); return INT; }
+iret { printf("IRET \n"); return IRET; }
+call { printf("CALL \n"); return CALL; }
+ret { printf("RET \n"); return RET; }
+jmp { printf("JMP \n"); return JMP; }
+beq { printf("BEQ \n"); return BEQ; }
+bne { printf("BNE \n"); return BNE; }
+bgt { printf("BGT \n"); return BGT; }
+push { printf("PUSH \n"); return PUSH; }
+pop { printf("POP \n"); return POP; }
+xchg { printf("XCHG \n"); return XCHG; }
+add { printf("ADD \n"); return ADD; }
+sub { printf("SUB \n"); return SUB; }
+mul { printf("MUL \n"); return MUL; }
+div { printf("DIV \n"); return DIV; }
+cmp { printf("CMP \n"); return CMP; }
+not { printf("NOT \n"); return NOT; }
+and { printf("AND \n"); return AND; }
+or { printf("OR \n"); return OR; }
+xor { printf("XOR \n"); return XOR; }
+test { printf("TEST \n"); return TEST; }
+shl { printf("SHL \n"); return SHL; }
+shr { printf("SHR \n"); return SHR; }
+ld { printf("LD \n"); return LD; }
+st { printf("ST \n"); return ST; }
+csrrd { printf("CSRRD \n"); return CSRRD; }
+csrwr { printf("CSRWR \n"); return CSRWR; }
+"%status" { yylval.str = new std::string("status"); return STATUSREGISTER; }
+"%handler" {yylval.str = new std::string("handler"); return HANDLERREGISTER;}
+"%cause" { yylval.str = new std::string("cause"); return CAUSEREGISTER; }
+r0 { printf("R0 \n"); yylval.str = new std::string("R0"); return R0; }
+r1 { printf("R1 \n"); yylval.str = new std::string("R1"); return R1; }
+r2 { printf("R2 \n"); yylval.str = new std::string("R2"); return R2; }
+r3 { printf("R3 \n"); yylval.str = new std::string("R3"); return R3; }
+r4 { printf("R4 \n"); yylval.str = new std::string("R4"); return R4; }
+r5 { printf("R5 \n"); yylval.str = new std::string("R5"); return R5; }
+r6 { printf("R6 \n"); yylval.str = new std::string("R6"); return R6; }
+r7 { printf("R7 \n"); yylval.str = new std::string("R7"); return R7; }
+r8 { printf("R8 \n"); yylval.str = new std::string("R8"); return R8; }
+r9 { printf("R9 \n"); yylval.str = new std::string("R9"); return R9; }
+r10 { printf("R10 \n"); yylval.str = new std::string("R10"); return R10; }
+r11 { printf("R11 \n"); yylval.str = new std::string("R11"); return R11; }
+r12 { printf("R12 \n"); yylval.str = new std::string("R12"); return R12; }
+r13 { printf("R13 \n"); yylval.str = new std::string("R13"); return R13; }
+r14|sp { printf("R14 \n"); yylval.str = new std::string("R14"); return R14; }
+r15|pc { printf("R15 \n"); yylval.str = new std::string("R15"); return R15; }
+0[xX][0-9a-fA-F]+ {yylval.str = new std::string(yytext); printf("HEX LITERAL: %s\n", yytext); return HEX_LITERAL; }
+[0-9]+ {yylval.integer = std::atoi(yytext); printf("DECIMAL LITERAL: %s\n", yytext); return DECIMAL_LITERAL; }
+[a-zA-Z][a-zA-Z0-9_]* {yylval.str = new std::string(yytext); printf("SYMBOL: %s\n", yytext); return SYMBOL; }
+\n { printf("EOL\n"); return EOL; }
+[ \t]   { }
+.  { }
+
+%%
