@@ -55,7 +55,8 @@
 %token <str> CAUSEREGISTER
 %token <str> STATUSREGISTER
 
-%type<str> register
+%type <str> ControlAndStatusRegister
+%type <str> register
 %%
 
 prog : input;
@@ -75,35 +76,35 @@ line: EOL { }
 
 AssemblyCommand : HALT { ass->haltAssemblyInstruction(); }
 | INT { ass->intAssemblyInstruction(); }
-| IRET {}
-| CALL operandJump
-| RET
+| IRET { ass->iretAssemblyInstruction(); }
+| CALL operandJumpCall {}
+| RET { ass->retAssemblyInstruction(); }
 | JMP operandJump {}
-| BEQ PERCENT register COMMA PERCENT register COMMA operandJump {}
-| BNE PERCENT register COMMA PERCENT register COMMA operandJump {}
-| BGT PERCENT register COMMA PERCENT register COMMA operandJump {}
-| PUSH PERCENT register
-| POP PERCENT register
+| BEQ PERCENT register COMMA PERCENT register COMMA operandJumpBranch { ass->branchAssemblyInstruction($3, $6, beq); }
+| BNE PERCENT register COMMA PERCENT register COMMA operandJumpBranch { ass->branchAssemblyInstruction($3, $6, bne); }
+| BGT PERCENT register COMMA PERCENT register COMMA operandJumpBranch { ass->branchAssemblyInstruction($3, $6, bgt); }
+| PUSH PERCENT register { ass->pushRegisterInstruction($3); }
+| POP PERCENT register { ass->popRegisterInstruction($3); }
 | XCHG PERCENT register COMMA PERCENT register { ass->xchgAssemblyInstruction($3, $6); }
 | ADD PERCENT register COMMA PERCENT register { ass->addAssemblyInstruction($3, $6); }
 | SUB PERCENT register COMMA PERCENT register { ass->subAssemblyInstruction($3, $6); }
 | MUL PERCENT register COMMA PERCENT register { ass->mulAssemblyInstruction($3, $6); }
 | DIV PERCENT register COMMA PERCENT register { ass->divAssemblyInstruction($3, $6); }
-| NOT PERCENT register
-| AND PERCENT register COMMA PERCENT register
-| OR PERCENT register COMMA PERCENT register
-| XOR PERCENT register COMMA PERCENT register
-| SHL PERCENT register COMMA PERCENT register
-| SHR PERCENT register COMMA PERCENT register
+| NOT PERCENT register { ass->notAssemblyInstruction($3); }
+| AND PERCENT register COMMA PERCENT register { ass->andAssemblyInstruction($3, $6); }
+| OR PERCENT register COMMA PERCENT register { ass->orAssemblyInstruction($3, $6); }
+| XOR PERCENT register COMMA PERCENT register { ass->xorAssemblyInstruction($3, $6); }
+| SHL PERCENT register COMMA PERCENT register { ass->shlAssemblyInstruction($3, $6); }
+| SHR PERCENT register COMMA PERCENT register { ass->shrAssemblyInstruction($3, $6); }
 | LD operand COMMA PERCENT register { ass->dataLdAssemblyInstruction($5); }
-| ST PERCENT register COMMA operand { ass->dataLdAssemblyInstruction($3); }
-| CSRRD ControlAndStatusRegister COMMA PERCENT register
-| CSRWR PERCENT register COMMA ControlAndStatusRegister
+| ST PERCENT register COMMA operand { ass->dataStAssemblyInstruction($3); }
+| CSRRD ControlAndStatusRegister COMMA PERCENT register { ass->csrrdAssemblyInstruction($2, $5); }
+| CSRWR PERCENT register COMMA ControlAndStatusRegister { ass->csrwrAssemblyInstruction($3, $5); }
 ;
 
-ControlAndStatusRegister : STATUSREGISTER { std::cout << "Status register: " << $1 << std::endl; }
-| CAUSEREGISTER { std::cout << "cause register: " << *($1) << std::endl; }
-| HANDLERREGISTER { std::cout << "handler register: " << $1 << std::endl; }
+ControlAndStatusRegister : STATUSREGISTER { $$ = $1; }
+| CAUSEREGISTER { $$ = $1; }
+| HANDLERREGISTER { $$ = $1; }
 ;
 
 register:
@@ -131,16 +132,24 @@ operandJump:  HEX_LITERAL { int decLiteral = ass->convertHexToInt($1); ass->jmpA
   | DECIMAL_LITERAL { ass->jmpAssemblyInstructionLiteral($1); }
   | SYMBOL { ass->jmpAssemblyInstructionSymbol($1); }
 
-operand: DOLLAR HEX_LITERAL { int decLiteral = ass->convertHexToInt($2); ass->storeData(decLiteral, nullptr); }
-| DOLLAR DECIMAL_LITERAL { ass->storeData($2, nullptr); }
-| DOLLAR SYMBOL { ass->storeData(0, $2); }
-| HEX_LITERAL { std::cout << "HEX_LITERAL: " << $1 << std::endl; }
-| DECIMAL_LITERAL { std::cout << "DECIMAL_LITERAL: " << $1 << std::endl; }
-| SYMBOL { std::cout << "SYMBOL: " << $1 << std::endl; }
-| PERCENT register
-| LEFT_BRACKET PERCENT register RIGHT_BRACKET
-| LEFT_BRACKET PERCENT register PLUS HEX_LITERAL RIGHT_BRACKET { std::cout << "HEX_LITERAL: " << $5 << std::endl; }
-| LEFT_BRACKET PERCENT register PLUS DECIMAL_LITERAL RIGHT_BRACKET { std::cout << "DECIMAL LITERAL: " << $5 << std::endl; }
+operandJumpCall:  HEX_LITERAL { int decLiteral = ass->convertHexToInt($1); ass->callAssemblyInstruction(decLiteral, nullptr); }
+  | DECIMAL_LITERAL { ass->callAssemblyInstruction($1, nullptr); }
+  | SYMBOL { ass->callAssemblyInstruction(0, $1); }
+
+operandJumpBranch:  HEX_LITERAL { int decLiteral = ass->convertHexToInt($1); ass->storeDataForBranch(decLiteral, nullptr); }
+  | DECIMAL_LITERAL { ass->storeDataForBranch($1, nullptr); }
+  | SYMBOL { ass->storeDataForBranch(0, $1); }
+
+operand: DOLLAR HEX_LITERAL { int decLiteral = ass->convertHexToInt($2); ass->storeData(decLiteral, nullptr, immed, nullptr); }
+| DOLLAR DECIMAL_LITERAL { ass->storeData($2, nullptr, immed, nullptr); }
+| DOLLAR SYMBOL { ass->storeData(0, $2, immed, nullptr); }
+| HEX_LITERAL { int decLiteral = ass->convertHexToInt($1); ass->storeData(decLiteral, nullptr, memoryDirectLiteral, nullptr); }
+| DECIMAL_LITERAL { ass->storeData($1, nullptr, memoryDirectLiteral, nullptr); }
+| SYMBOL { ass->storeData(0, $1, memoryDirectSymbol, nullptr); }
+| PERCENT register { ass->storeData(0, nullptr, registerDirect, $2); }
+| LEFT_BRACKET PERCENT register RIGHT_BRACKET { ass->storeData(0, nullptr, registerIndirect, $3); }
+| LEFT_BRACKET PERCENT register PLUS HEX_LITERAL RIGHT_BRACKET { int decLiteral = ass->convertHexToInt($5); ass->storeData(decLiteral, nullptr, regIndOffset, $3); }
+| LEFT_BRACKET PERCENT register PLUS DECIMAL_LITERAL RIGHT_BRACKET { ass->storeData($5, nullptr, regIndOffset, $3); }
 | LEFT_BRACKET PERCENT register PLUS SYMBOL RIGHT_BRACKET { std::cout << "SYMBOL: " << $5 << std::endl; }
 
 directive: GLOBAL SymbolListGlobal { }

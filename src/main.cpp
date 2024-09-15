@@ -13,6 +13,7 @@ int main(int argc, char *argv[]) {
   // a->printSymbolTable();
   a->printJumpRelocationEntries();
   a->printTablesToFile("output.txt");
-
+  a->printTablesToFileProba("output_proba.txt");
+  a->printOutputForLinker("output_test");
   return 0;
 }
