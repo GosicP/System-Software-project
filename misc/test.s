@@ -1,53 +1,78 @@
-.skip 10
+# file: main.s
 
-.skip 0x03
+.extern handler, mathAdd, mathSub, mathMul, mathDiv
 
-.section sekcija0
+.global my_start
 
-xchg %r2, %r6
+.global value1, value2, value3, value4, value5, value6, value7
 
-jmp 5
+.section my_code
+my_start:
+    ld $0xFFFFFEFE, %sp
+    ld $handler, %r1
+    csrwr %r1, %handler
 
-add %r7, %r2
+    int # software interrupt
 
-ld $h, %r5
+    ld $1, %r1
+    push %r1
+    ld $1, %r1
+    push %r1
+    call 0xF0000000
+    st %r1, value2
 
-.extern y, z
+    ld $2, %r1
+    push %r1
+    ld $1, %r1
+    push %r1
+    call mathAdd
+    st %r1, value3
 
-.global b,c , d
+    ld $7, %r1
+    push %r1
+    ld $11, %r1
+    push %r1
+    call mathSub
+    st %r1, value4
 
-ld $h, %r8
+    ld $5, %r1
+    push %r1
+    ld $25, %r1
+    push %r1
+    call mathDiv
+    st %r1, value5
 
-ld $5, %r6
+    ld $4, %r1
+    push %r1
+    ld $24, %r1
+    push %r1
+    call mathDiv
+    st %r1, value6
 
-.global g
+    ld value1, %r1
+    ld value2, %r2
+    ld value3, %r3
+    ld value4, %r4
+    ld value5, %r5
+    ld value6, %r6
+    ld value7, %r7
 
-ld $2, %r2
+    halt
 
-h:
-
-.section sekcija1
-
-.word 5, 171, h
-
-ld $k, %r13
-
-ld $0x12, %r12
-
-jmp k
-
-add %r7, %r2
-
-sub %r6, %r3
-
-.section sekcija2
-
-k:
-
-ld $h, %r11
-
-mul %r5, %r4
-
-div %r10, %r11
+.section my_data
+value1:
+.word 0
+value2:
+.word 0
+value3:
+.word 0
+value4:
+.word 0
+value5:
+.word 0
+value6:
+.word 0
+value7:
+.word 0
 
 .end

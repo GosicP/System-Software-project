@@ -184,8 +184,8 @@ SymbolListExtern: SYMBOL { ass->externAssemblyDirective($1); }
 int mainp(int argc, char* argv[], Assembler* as) {
   ass = as;
 
-  FILE *myfile = fopen("test.s", "r");
-  //FILE *myfile = NULL;
+  //FILE *myfile = fopen("test.s", "r");
+  FILE *myfile = fopen(argv[3], "r");
   
   //myfile = fopen(argv[1], "r");
   // Make sure it is valid:

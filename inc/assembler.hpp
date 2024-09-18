@@ -9,6 +9,9 @@ using namespace std;
 #include <iomanip>
 #include <regex>
 #include <fstream>
+#include <cctype>
+#include <cstdlib>
+
 
 //dodaj ReallocEntry sto je na 1:47:06
 
@@ -17,7 +20,7 @@ enum typeOfBranchJump { beq, bne, bgt };
 enum visibility { local, global, external, section, undefined }; 
 //0 local, 1 global, 2 extern, 3 section, 4 undefined
 
-enum relocationType { relative, absolute };
+enum relocationType { local_absolute, global_absolute };
 
 enum AdressingType { none, immed, memory, registerDirect, registerIndirect, memoryDirectLiteral, memoryDirectSymbol, regIndOffset };
 
@@ -35,8 +38,10 @@ struct JumpRelocationEntry {
 struct RelocationTableEntry {
   int id;
   string sectionName; //ako zelim da ga koristim, ne znam da li ce mi trebati
+  int sectionId;
   int sectionOffset; //ofset od pocetka sekcije gde pravim relokaciju
   string symbolName;
+  int symbolId;
   int addend = 0;
   relocationType typeOfRelocation;
   //mozda da dodas ako je simbol iz druge sekcije, ime te druge sekcije umesto da stavljas u symbol name?
@@ -62,9 +67,10 @@ struct poolOfLiterals{
 
 struct SectionEntry{
   int idSection;
-  int locationCounter;
+  int locationCounter = 0;
   int size;
   int startAddr;
+  int relocationIndexId = 0;
   vector<string> opCodeList;
 
   int poolLocation = 0;
@@ -83,7 +89,7 @@ class Assembler{
 
   int symbolIndexId = 0;
   int sectionIndexId = 0;
-  int relocationIndexId = 0;
+  
 
   int current_data_literal = -1;
   string* current_data_symbol = nullptr;
@@ -120,6 +126,8 @@ class Assembler{
   void wordAssemblyDirective(int literalParam, string* wordSybol);
   //start adresu ne diram, mozda bih trebao?
   void endAssemblyDirective();
+  bool isInteger(const std::string& str);
+  bool symbolExists(const std::vector<RelocationTableEntry>& relocationTable, std::string& symbolName);
 
 
   void haltAssemblyInstruction();
@@ -203,10 +211,11 @@ class Assembler{
   void printTablesToFileProba(const std::string& filename);
   void printOutputForLinker(const std::string& filename);
 
+  //ovo konvertuje u unsigned long i vraca int, ali nigde se ne ne koristi funkcija pa ne pravi problem?
   int convertHexToInt(string* hexString);
 
   void splitOpCodeListInPlace(); //splits opcode in 1 byte strings (12345678 to 12 34 56 78)
-  //if a code is already in byte format, it won't be split
+  std::vector<uint8_t> hexStringToBytes(const std::vector<std::string>& opCodeList);
   
 };
 #endif

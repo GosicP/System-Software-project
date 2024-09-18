@@ -419,8 +419,8 @@ void Assembler::endAssemblyDirective() {
           rtEntry.sectionOffset = absoluteSymbolAdress;
           rtEntry.sectionId = section.idSection; //section je trenutna sekcija koja obradjuje literalpool
           rtEntry.symbolId = sectionToBacktrack.idSection;
-          rtEntry.symbolName = entry.sectionName; // ovo je ime sekcije simbola
-          rtEntry.addend += entry.sectionOffset;
+          rtEntry.symbolName = definedSymbol.sectionName; // ovo je ime sekcije simbola
+          rtEntry.addend += definedSymbol.offset;
           rtEntry.typeOfRelocation = local_absolute; /* set the appropriate relocation type */
           relocationTable[key].push_back(rtEntry);
         }

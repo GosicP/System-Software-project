@@ -55,6 +55,20 @@ void printMemory() {
 //     outputFile.close();
 // }
 
+uint32_t fetchWordFromMemory(unsigned int address) {
+    // Prevent reading from the top of the address space
+    if (address > 0xfffffffcU) return static_cast<uint32_t>(-1);
+
+    // Read 4 consecutive bytes from memory and combine them
+    uint8_t byte1 = memory[address];
+    uint8_t byte2 = memory[address + 1];
+    uint8_t byte3 = memory[address + 2];
+    uint8_t byte4 = memory[address + 3];
+
+    // Combine bytes into a 32-bit word in little-endian format
+    return (byte1 | (byte2 << 8) | (byte3 << 16) | (byte4 << 24));
+}
+
 void storeToMemory(uint32_t regData, unsigned int addr) {
     // Prevent writing to the top of memory
     if (addr > 0xfffffffcU) return;
@@ -70,7 +84,7 @@ void storeToMemory(uint32_t regData, unsigned int addr) {
 void displayProcessorState(registersCpu registers) {
     cout << "\n===============================================================\n";
     cout << "Processor halted. Current state:\n";
-    for (int i = 0; i < 15; ++i) {
+    for (int i = 0; i < 16; ++i) {
         cout << " r" << i << "=0x" << hex << setfill('0') << setw(8) << registers.gpr[i] << ((i % 4 == 3) ? "\n" : "\t");
     }
     cout << "===============================================================\n";
@@ -149,85 +163,114 @@ int main(int argc, char* argv[]) {
     C_instr = (instruction & 0x0000f000U) >> 12;       // Operand C (next 4 bits)
     displacement_instr = ((instruction & 0x00000f00U) >> 8) | ((instruction & 0x000000ffU) << 4);  // Operand D
 
+    // Probaj i ovo
+    // uint8_t lower_D = instruction & 0xFF;   // Extract the lower 8 bits of D
+    // uint8_t upper_D = (instruction >> 8) & 0xF;  // Extract the upper 4 bits of D
+
+    // displacement_instr = (upper_D << 4) | lower_D;  // Merge the two parts of D
+
     // Extend sign for displacement if needed (sign extension)
     if ((displacement_instr & 0x800U) != 0) {
         displacement_instr |= 0xfffff000;  // Sign extend to preserve negative values
     }
 
     switch (opcode_mode_instr) {
-      case HALT:
+      case HALT:{
           if(A_instr == 0 && B_instr == 0 && C_instr == 0){
             running = false;
           }else{
             handleIllegalInstruction();
           }
           break;
-      
-      case SWI:
-      if((registers_cpu.csr[status] & masksStatus::interruptStatus) == 0) { 
-        registers_cpu.gpr[sp] -= 4;
-        storeToMemory(registers_cpu.csr[status], registers_cpu.gpr[sp]); 
-        registers_cpu.gpr[sp] -= 4;
-        storeToMemory(registers_cpu.gpr[pc], registers_cpu.gpr[sp]); 
-        registers_cpu.csr[status] &= ~0x1;
-        registers_cpu.csr[cause] = masksCause::software; 
-        registers_cpu.gpr[pc] = registers_cpu.csr[handler]; 
-      }else{
-        handleIllegalInstruction();
       }
+      case SWI:{
+        if((registers_cpu.csr[status] & masksStatus::interruptStatus) == 0) { 
+          registers_cpu.gpr[sp] -= 4;
+          storeToMemory(registers_cpu.csr[status], registers_cpu.gpr[sp]); 
+          registers_cpu.gpr[sp] -= 4;
+          storeToMemory(registers_cpu.gpr[pc], registers_cpu.gpr[sp]); 
+          //ovo mozda ne treba ovako, tako kazu na discu
+          //registers_cpu.csr[status] &= ~0x1;
+          registers_cpu.csr[status] |= masksStatus::interruptStatus;
+          registers_cpu.csr[cause] = masksCause::software; 
+          registers_cpu.gpr[pc] = registers_cpu.csr[handler]; 
+        }else{
+          handleIllegalInstruction();
+        }
           // Handle software interrupt (SWI) instruction
           break;
-
-      case CALL_REG:
-          // Handle CALL (register-based)
+      }
+      case CALL_REG:{
+          registers_cpu.gpr[sp] -= 4;
+          storeToMemory(registers_cpu.gpr[pc], registers_cpu.gpr[sp]); //Push pc
+          registers_cpu.gpr[pc] = registers_cpu.gpr[A_instr] + registers_cpu.gpr[B_instr] + displacement_instr;
           break;
-
-      case CALL_MEM:
-          // Handle CALL (memory-based)
+      }
+      case CALL_MEM:{
+          registers_cpu.gpr[sp] -= 4;
+          storeToMemory(registers_cpu.gpr[pc], registers_cpu.gpr[sp]); //Push pc
+          long address_to_fetch = registers_cpu.gpr[A_instr] + registers_cpu.gpr[B_instr] + displacement_instr;
+          registers_cpu.gpr[pc] = fetchWordFromMemory(address_to_fetch);
           break;
-
-      case JMP_REG:
-          // Handle JMP to register
+      }
+      case JMP_REG:{
+          registers_cpu.gpr[pc] = registers_cpu.gpr[A_instr] + displacement_instr;
           break;
-
-      case JMP_EQ:
-          // Handle JMP if equal
+      }
+      case JMP_EQ:{
+          if(registers_cpu.gpr[B_instr] == registers_cpu.gpr[C_instr]) {
+            registers_cpu.gpr[pc] = registers_cpu.gpr[A_instr] + displacement_instr;
+          }
           break;
-
-      case JMP_NEQ:
-          // Handle JMP if not equal
+      }
+      case JMP_NEQ:{
+          if(registers_cpu.gpr[B_instr] != registers_cpu.gpr[C_instr]) {
+            registers_cpu.gpr[pc] = registers_cpu.gpr[A_instr] + displacement_instr;
+          }
           break;
-
-      case JMP_GT:
-          // Handle JMP if greater than
+      }
+      case JMP_GT:{
+          if(static_cast<int>(registers_cpu.gpr[B_instr]) > static_cast<int>(registers_cpu.gpr[C_instr])) { //zato sto kaze signed da se uporedjuje
+            registers_cpu.gpr[pc] = registers_cpu.gpr[A_instr] + displacement_instr;
+          }
           break;
-
-      case JMP_MEM:
-          // Handle JMP to memory
-          break;
-
-      case JMP_MEM_EQ:
-          // Handle JMP to memory if equal
-          break;
-
-      case JMP_MEM_NEQ:
-          // Handle JMP to memory if not equal
-          break;
-
-      case JMP_MEM_GT:
-          // Handle JMP to memory if greater than
-          break;
-
-      case XCHG:
-          if (B_instr == 0 || C_instr == 0) {
+      }
+      case JMP_MEM:{
+        long address = registers_cpu.gpr[A_instr] + displacement_instr;
+        registers_cpu.gpr[pc] = fetchWordFromMemory(address);
+        break;
+      }
+      case JMP_MEM_EQ:{
+        long address = registers_cpu.gpr[A_instr] + displacement_instr;
+        if(registers_cpu.gpr[B_instr] == registers_cpu.gpr[C_instr]) {
+          registers_cpu.gpr[pc] = fetchWordFromMemory(address);
+        }
+        break;
+      }
+      case JMP_MEM_NEQ:{
+        long address = registers_cpu.gpr[A_instr] + displacement_instr;
+        if(registers_cpu.gpr[B_instr] != registers_cpu.gpr[C_instr]) {
+          registers_cpu.gpr[pc] = fetchWordFromMemory(address);
+        }
+        break;
+      }
+      case JMP_MEM_GT:{
+        long address = registers_cpu.gpr[A_instr] + displacement_instr;
+        if(static_cast<int>(registers_cpu.gpr[B_instr]) > static_cast<int>(registers_cpu.gpr[C_instr])) {
+          registers_cpu.gpr[pc] = fetchWordFromMemory(address);
+        }
+        break;
+      }
+      case XCHG:{
+          if (B_instr == 0 || displacement_instr == 0) {
             break;
           }
           int tmp = registers_cpu.gpr[B_instr];
           registers_cpu.gpr[B_instr] = registers_cpu.gpr[C_instr];
           registers_cpu.gpr[C_instr] = tmp;
         break;
-
-      case ADD:
+      }
+      case ADD:{
           if (A_instr == 0) {
             break;
           }
@@ -236,18 +279,18 @@ int main(int argc, char* argv[]) {
           }
           registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] + registers_cpu.gpr[C_instr];
           break;
-
-      case SUB:
+      }
+      case SUB:{
           if (A_instr == 0) {
             break;
           }
           if(displacement_instr != 0){
             handleIllegalInstruction();
           }
-          registers_cpu.gpr[A_instr] = registers_cpu.gpr[C_instr] - registers_cpu.gpr[B_instr];
+          registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] - registers_cpu.gpr[C_instr];
           break;
-
-      case MUL:
+      }
+      case MUL:{
           if (A_instr == 0) {
             break;
           }
@@ -256,18 +299,18 @@ int main(int argc, char* argv[]) {
           }
           registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] * registers_cpu.gpr[C_instr];
           break;
-
-      case DIV:
+      }
+      case DIV:{
           if (A_instr == 0) {
             break;
           }
           if(displacement_instr != 0){
             handleIllegalInstruction();
           }
-          registers_cpu.gpr[A_instr] = registers_cpu.gpr[C_instr] / registers_cpu.gpr[B_instr];
+          registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] / registers_cpu.gpr[C_instr];
           break;
-
-      case NOT:
+      }
+      case NOT:{
           if (A_instr == 0) {
             break;
           }
@@ -276,8 +319,8 @@ int main(int argc, char* argv[]) {
           }
           registers_cpu.gpr[A_instr] = ~registers_cpu.gpr[B_instr];
           break;
-
-      case AND:
+      }
+      case AND:{
           if (A_instr == 0) {
             break;
           }
@@ -286,8 +329,8 @@ int main(int argc, char* argv[]) {
           }
           registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] & registers_cpu.gpr[C_instr];
           break;
-
-      case OR:
+      }
+      case OR:{
           if (A_instr == 0) {
             break;
           }
@@ -296,8 +339,8 @@ int main(int argc, char* argv[]) {
           }
           registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] | registers_cpu.gpr[C_instr];
           break;
-
-      case XOR:
+      }
+      case XOR:{
           if (A_instr == 0) {
             break;
           }
@@ -306,8 +349,8 @@ int main(int argc, char* argv[]) {
           }
           registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] ^ registers_cpu.gpr[C_instr];
           break;
-
-      case SHL:
+      }
+      case SHL:{
           if (A_instr == 0) {
             break;
           }
@@ -316,8 +359,8 @@ int main(int argc, char* argv[]) {
           }
           registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] << registers_cpu.gpr[C_instr];
           break;
-
-      case SHR:
+      }
+      case SHR:{
           if (A_instr == 0) {
             break;
           }
@@ -326,56 +369,78 @@ int main(int argc, char* argv[]) {
           }
           registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] >> registers_cpu.gpr[C_instr];
           break;
-
-      case STR_REG:
-          // Handle store to register
+      }
+      case STR_REG:{
+          storeToMemory(registers_cpu.gpr[C_instr], registers_cpu.gpr[A_instr] + registers_cpu.gpr[B_instr] + displacement_instr);
           break;
-
-      case STR_MEM:
-          // Handle store to memory
+      }
+      case STR_MEM:{
+          unsigned int address = fetchWordFromMemory(registers_cpu.gpr[A_instr] + registers_cpu.gpr[B_instr] + displacement_instr);
+          storeToMemory(registers_cpu.gpr[C_instr], address);
           break;
-
-      case STR_INC:
-          // Handle store with increment
+      }
+      case STR_INC:{
+          registers_cpu.gpr[A_instr] += displacement_instr;
+          storeToMemory(registers_cpu.gpr[C_instr], registers_cpu.gpr[A_instr]);
           break;
-
-      case LDR_CSR:
-          // Handle load from CSR
+      }
+      case LDR_CSR:{
+          if (A_instr != 0) {
+            registers_cpu.gpr[A_instr] = registers_cpu.csr[B_instr];
+          }else{
+            registers_cpu.gpr[A_instr] = 0;
+          }
           break;
-
-      case LDR_REG:
-          // Handle load from register with displacement
+      }
+      case LDR_REG:{
+          if (A_instr != 0) {
+            registers_cpu.gpr[A_instr] = registers_cpu.gpr[B_instr] + displacement_instr;
+          }else{
+            registers_cpu.gpr[A_instr] = 0;
+          }
           break;
-
-      case LDR_MEM:
-          // Handle load from memory with displacement
+      }
+      case LDR_MEM:{
+          if (A_instr != 0) {
+            if(A_instr == 4){
+              cout<<std::hex<< registers_cpu.gpr[B_instr]<<endl;
+            }
+              long address = registers_cpu.gpr[B_instr] + registers_cpu.gpr[C_instr] + displacement_instr;
+              registers_cpu.gpr[A_instr] = fetchWordFromMemory(address);
+          } else {
+              registers_cpu.gpr[A_instr] = 0;
+          }
           break;
-
-      case LDR_MEM_INC:
-          // Handle load from memory with increment
+      }
+      case LDR_MEM_INC:{
+          registers_cpu.gpr[A_instr] = fetchWordFromMemory(registers_cpu.gpr[B_instr]);
+          registers_cpu.gpr[B_instr] += displacement_instr;
           break;
-
-      case CSR_LOAD:
-          // Handle CSR load
+      }
+      case CSR_LOAD:{
+          registers_cpu.csr[A_instr] = registers_cpu.gpr[B_instr];
           break;
-
-      case CSR_OR:
-          // Handle CSR OR operation
+      }
+      case CSR_OR:{
+          registers_cpu.csr[A_instr] = registers_cpu.gpr[B_instr] | displacement_instr;
           break;
-
-      case CSR_MEM:
-          // Handle CSR memory operation
+      }
+      case CSR_MEM:{
+          registers_cpu.csr[A_instr] = fetchWordFromMemory(registers_cpu.gpr[B_instr] + registers_cpu.gpr[C_instr] + displacement_instr);
           break;
-
-      case CSR_MEM_INC:
-          // Handle CSR memory increment operation
+      }
+      case CSR_MEM_INC:{
+          registers_cpu.csr[A_instr] = fetchWordFromMemory(registers_cpu.gpr[B_instr]);
+          registers_cpu.gpr[B_instr] += displacement_instr;
           break;
-
-      default:
-          // Handle unknown opcode
+      }
+      default:{
+          handleIllegalInstruction();
           break;
+      }
     }
   }
 
+  displayProcessorState(registers_cpu);
   return 0;
 }
