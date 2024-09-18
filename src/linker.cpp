@@ -65,6 +65,11 @@ void Linker::readAssembly(int argc, char* argv[]) {
     exit(-1);
   } 
 
+  
+    std::cout << "Current sectionPlaceMap keys:" << std::endl;
+    for (const auto& entry : sectionPlaceMap) {
+        std::cout << "'" << entry.first << "'" << std::endl;
+    }
   vector<ifstream>* inputFiles = new vector<ifstream>();
   unsigned int startAddrUnplaced = 0;
     for(int i = 0; i<argc-inputIndexStart; i++){ //za svaki od fajlova...
@@ -95,11 +100,13 @@ void Linker::readAssembly(int argc, char* argv[]) {
             // cout << "Section Byte Size: " << sectionByteSize << endl;
 
             unsigned int startingAdressSection;
+            //std::cout << "Checking for section: '" << sectionName << "'" << std::endl;
             if(sectionTableLinker.find(sectionName) == sectionTableLinker.end()){
               //entry doesn't exist
               SectionEntryLinker symbolTableRow = sectionTableLinker[sectionName];
               bool isPlacedTemp = false;
               if (sectionPlaceMap.find(sectionName) != sectionPlaceMap.end()) { 
+                std::cout << "Usla je sekcija: '" << sectionName << "'" << std::endl;
                   isPlacedTemp = true;
                   startingAdressSection = sectionPlaceMap[sectionName];
                   // Iterate through all placed sections in the linker symbol table
@@ -140,6 +147,7 @@ void Linker::readAssembly(int argc, char* argv[]) {
               } else {
                   cout<<"usao sam u else granu tokom obradjivanja my_data"<<endl;
                   startingAdressSection = 0;
+                  //ZASTO SE OVDE UBACUJE SEKCIJA CODE NA 400000000???
                   notPlacedSections.push_back(sectionName);
                 } 
             // Read the opcode (bytecode) data for the section
@@ -215,6 +223,7 @@ void Linker::readAssembly(int argc, char* argv[]) {
             newTracker.inputFile = argv[i];
             newTracker.inputFileIndex = i;
             newTracker.sectionName = sectionName;
+            newTracker.startingAdressOldSection = startingAdressSection; //ovo nije 0 za sekcije koje nisu 0, logicno
 
             descriptorTracker.push_back(newTracker);
             //onda ovde ide neki file tracker????
@@ -229,11 +238,19 @@ void Linker::readAssembly(int argc, char* argv[]) {
         cout<< "obradjujem unplaced sekciju " << unplacedSectionName << " i njen kod je "<<currentStartAdress<<endl;
         SectionEntryLinker& unplacedSection = sectionTableLinker[unplacedSectionName];
         unplacedSection.startAdress = currentStartAdress;
+        for(auto singleTracker : descriptorTracker){
+            if(singleTracker.sectionName == unplacedSectionName) {
+                cout<< "obradjujem tracker za " << singleTracker.sectionName << " i njen kod je "<<currentStartAdress<<endl;
+                singleTracker.startingAdressOldSection += currentStartAdress;
+            }
+        }
+        //TODO ovde treba IF ako budemo hteli da nam value u sekciji bude pocetak sekcije a ne poslednja adresa
         currentStartAdress += unplacedSection.size;
-
+        
+        
         SymbolTableEntryLinker& newSymbolEntry = symbolTableLinker[unplacedSectionName];
         newSymbolEntry.offset = currentStartAdress;
-        //TODO: OVDE TREBA FILE TRACKER KOJI NE RAZUMEM
+        //TODO: OVDE BI TREBAO FILE TRACKED DA STAVLJAM NESTO STO NIJE IME SEKCIJE I IME FAJLA
     }
 
     //TODO sada radim sa tabelom simbola
@@ -295,7 +312,15 @@ void Linker::readAssembly(int argc, char* argv[]) {
                     for(auto descriptor : descriptorTracker){
                         if(descriptor.inputFileIndex == i && descriptor.sectionName == sectionNameForSymbol){ //ovaj drugi uslov mozda treba da promenim?
                             //formula je pocetak sekcije + offset datog simbola
-                            newAdress = offset + sectionTableLinker[sectionNameForSymbol].startAdress;
+                            //newAdress = offset + sectionTableLinker[sectionNameForSymbol].startAdress;
+                            if(descriptor.startingAdressOldSection<65536 && descriptor.startingAdressOldSection>-65536){
+                                //ovo je iskljucivo zato sto ne znam gde je greska i zasto se placed
+                                //sekcija na mestu 4000000 (koja je math) stavlja u red sekcija bez place.
+                                //sekcija ionako ne moze da bude +-2048, tako a je ovo normalna pretpostavka 
+                                newAdress = offset + descriptor.startingAdressOldSection + sectionTableLinker[sectionNameForSymbol].startAdress;
+                            }else{
+                                newAdress = offset + sectionTableLinker[sectionNameForSymbol].startAdress;
+                            }
                             cout<< " za simbol " << symbolName << " nova adresa u linkeru je " << newAdress << endl;
 
                             newSectionName = sectionNameForSymbol;
@@ -359,7 +384,8 @@ void Linker::readAssembly(int argc, char* argv[]) {
                 for (size_t k = 0; k < relocEntryCount; k++) {
                     // Local variables to hold relocation entry details
                     std::string symbolName;
-                    int symbolId, RelocId, sectionId, sectionOffset, addend;
+                    int symbolId, RelocId, sectionId, addend;
+                    int sectionOffset;
                     relocationType typeOfRelocation;
 
                     // Read the symbol name size and symbol name
@@ -397,45 +423,156 @@ void Linker::readAssembly(int argc, char* argv[]) {
 
                     
                      // Write the relocation entry details to the file
-                    outFile << "Relocation Entry #" << k + 1 << " for Section: " << sectionName << std::endl;
+                    outFile << "Relocation Entry #" << k + 1 << " for Section: " << relocSectionName << std::endl;
                     outFile << "Symbol Name: " << symbolName << ", Symbol ID: " <<symbolId << std::endl;
                     outFile << "ID: " << RelocId << ", Section ID: " << sectionId << std::endl;
-                    outFile << "Relocation Section Name: " << sectionName << std::endl;
-                    outFile << "Section Offset: " << sectionOffset << ", Addend: " << addend << std::endl;
+                    outFile << "Relocation Section Name: " << relocSectionName << std::endl;
+                    outFile << "Section Offset: " << sectionOffset << ", Addend: " << std::hex  << addend << std::endl;
                     outFile << "Relocation Type: " << typeOfRelocation << std::endl;
                     
-                    int sectionStartAddr;
+                    int newSectionStartAddr = 0;
                     int patchValue;
+                    int oldSectionStartAddress = 0;
                     for(auto descriptor : descriptorTracker){
                         if(descriptor.inputFileIndex == i && descriptor.sectionName == relocSectionName){ //ovaj drugi uslov mozda treba da promenim?
-                            sectionStartAddr = sectionTableLinker[relocSectionName].startAdress;
+                            if(descriptor.startingAdressOldSection<65536 && descriptor.startingAdressOldSection>-65536){
+                                //ovo moze da bude i manje od ovoga ali jebemliga
+                                //ovo je iskljucivo zato sto ne znam gde je greska i zasto se placed
+                                //sekcija na mestu 4000000 (koja je math) stavlja u red sekcija bez place.
+                                //sekcija ionako ne moze da bude +-2048, tako a je ovo normalna pretpostavka 
+                                oldSectionStartAddress = descriptor.startingAdressOldSection;
+                            }
+                            newSectionStartAddr = sectionTableLinker[relocSectionName].startAdress;
                         }
                     }
-                    int patchAddress = sectionStartAddr + sectionOffset; //ovo je pomeraj od samog pocetka, ovo je APSOLUTNA
+                    unsigned int patchAddress = oldSectionStartAddress  + sectionOffset; //ovo je pomeraj od samog pocetka, ovo je APSOLUTNA
+                    cout<< std::hex <<"Old section address je"<<oldSectionStartAddress<<"Nova adresa je "<< newSectionStartAddr << "Patch address je "<< patchAddress<<endl;
+                    cout<<std::hex<<"section offset je " << sectionOffset<<endl;
+                    cout<<std::hex<<"nova patch adresa je " << patchAddress<<endl;
                     //ADRESA SIMBOLA
                     //MENI ocigledno treba opet relativna vrednost od pocetka sekcije,zar to nije samo section offset?
                     //nadjes sekciju koja ti treba, i uzmes elemnt koji ti treba...
                     cout<<relocSectionName<<endl;
-                    cout<<std::hex << std::uppercase << std::setw(2) << std::setfill('0') <<static_cast<int>(sectionTableLinker[relocSectionName].opCodeList[sectionOffset])<<endl;
-                    if(typeOfRelocation = global_absolute) {
+                    cout<<std::hex << std::uppercase << std::setw(2) << std::setfill('0') <<static_cast<int>(sectionTableLinker[relocSectionName].opCodeList[patchAddress])<<endl;
+                    if(typeOfRelocation == global_absolute) {
                         patchValue = symbolTableLinker[symbolName].offset;
                     }else{
-                        patchValue = pocetnaVrednostSekcije("moras da odlucis da li je sekcija u symbol ili section name") + addend;
+                        //patchValue = sectionTableLinker[symbolName].startAdress + addend;
+                        patchValue = oldSectionStartAddress + sectionTableLinker[symbolName].startAdress + addend;
+                        // cout<< "pocetna vrednost sekcije je " << sectionTableLinker[symbolName].startAdress;
+                        // cout<< "Addend je " << addend;
                     }
                     //proveri da li ovo funkcionise kada imas place
-                    outFile << "Patch Adress for symbol: "<< symbolName << " is " << sectionStartAddr + sectionOffset << std::endl;
+                    outFile << "Patch Adress for symbol: "<< symbolName << " is " << std::hex << patchAddress << std::endl;
                     //dodaj i sectionOffset da mogu lako da izbrojim gde je patch
+                    //ovaj relative je mesto u opCode koje gadjamo
+                    outFile << "Relative Patch Adress for symbol: "<< symbolName << " is " << std::hex << patchAddress << std::endl;
                     outFile << "And it's patching byte" <<std::hex << std::uppercase << std::setw(2) << std::setfill('0') <<static_cast<int>(sectionTableLinker[relocSectionName].opCodeList[sectionOffset])<<endl;
                     outFile << "Patch Value for symbol: "<< symbolName << " is " << patchValue << std::endl;
                     outFile << "----------------------------------------" << std::endl;
+
+                    std::vector<uint8_t>& opCodeList = sectionTableLinker[relocSectionName].opCodeList;
+
+                    // Use memcpy to patch the value (little-endian by default on most systems)
+                    memcpy(&opCodeList[patchAddress], &patchValue, sizeof(patchValue));
+
+                    //                 // Access the vector where you need to patch the value
+                    // std::vector<uint8_t>& opCodeList = sectionTableLinker[relocSectionName].opCodeList;
+
+                    // // Patch the value using manual byte shifting (little-endian)
+                    // opCodeList[sectionOffset] = static_cast<uint8_t>(patchValue & 0xff);            // Least significant byte
+                    // opCodeList[sectionOffset + 1] = static_cast<uint8_t>((patchValue >> 8) & 0xff);  // 2nd byte
+                    // opCodeList[sectionOffset + 2] = static_cast<uint8_t>((patchValue >> 16) & 0xff); // 3rd byte
+                    // opCodeList[sectionOffset + 3] = static_cast<uint8_t>((patchValue >> 24) & 0xff); // Most significant byte
                 }
             }
         } else {
             std::cerr << "Error: Could not open input file " << i << std::endl;
         }
     }
+    //zatvara reloc_entries fajl
     outFile.close();
     
+    //obrada svega ovoga i slanje u hex
+
+    for (int i = 0; i < inputFiles->size(); i++) {
+        if ((*inputFiles)[i].is_open()) {
+            (*inputFiles)[i].close();  // Close each file if it is open
+        }
+    }
+    //nesto nesto
+    sendToHexEmulator(outputFile);
+}
+
+void Linker::sendToHexEmulator(string outputName){
+    ofstream outputFile;
+    outputFile.open(outputName, std::ios::binary);
+
+    // Sort sections based on starting address using a vector for sorted output
+    std::vector<std::pair<std::string, SectionEntryLinker>> sortedSections(sectionTableLinker.begin(), sectionTableLinker.end());
+    std::sort(sortedSections.begin(), sortedSections.end(), [](const auto& a, const auto& b) {
+        return static_cast<unsigned int>(a.second.startAdress) < static_cast<unsigned int>(b.second.startAdress);
+    });
+
+    unsigned int addr = 0;
+    unsigned int prevSectionEndAddr = 0;
+    size_t byteCountInLine = 0;
+
+    for (size_t i = 0; i < sortedSections.size(); i++) {
+        auto& section = sortedSections[i];
+        unsigned int sectionStartAddr = section.second.startAdress;
+        unsigned int sectionEndAddr = sectionStartAddr + section.second.size;
+
+        // Skip padding between sections: no zero-filling between distant sections
+        if (sectionStartAddr > prevSectionEndAddr) {
+            addr = sectionStartAddr;
+        }
+
+        // If we are not at the start of a line, complete the previous line before starting a new section
+        if (byteCountInLine > 0 && byteCountInLine < 8) {
+            while (byteCountInLine < 8) {
+                outputFile << "00 ";
+                byteCountInLine++;
+            }
+            outputFile << "\n";
+            byteCountInLine = 0;
+        }
+
+        // Output section contents
+        addr = sectionStartAddr;
+        for (size_t j = 0; j < section.second.opCodeList.size(); j++) {
+            // On first byte of a new line, print the address
+            if (byteCountInLine == 0) {
+                outputFile << std::hex << std::setfill('0') << std::setw(8) << addr << ": ";
+            }
+
+            // Output the current byte
+            outputFile << std::hex << std::setw(2) << static_cast<unsigned int>(section.second.opCodeList[j]) << " ";
+            addr++;
+            byteCountInLine++;
+
+            // After 8 bytes, reset for new line
+            if (byteCountInLine == 8) {
+                outputFile << "\n";
+                byteCountInLine = 0;
+            }
+        }
+
+        // If the section ends and the line isn't full yet, leave it to be continued by the next section
+        prevSectionEndAddr = sectionEndAddr;
+    }
+
+    // Align the output after the last section
+    if (byteCountInLine != 0) {
+        while (byteCountInLine < 8) {
+            outputFile << "00 ";
+            byteCountInLine++;
+        }
+        outputFile << "\n";
+    }
+
+    outputFile.close();
+
 }
 
 void Linker::printTablesToFile(const std::string& filename) {
